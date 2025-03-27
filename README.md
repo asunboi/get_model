@@ -26,7 +26,8 @@ This repository contains the official implementation of the model described in o
   - [Contact](#contact)
 
 ## News
-- There was a bug in data preparation pipeline for PBMC10x data, leading to random performance in predcit ATAC performance. The reason is peak was expected to be sorted by `chr1,chr2,chr3` while the count matrix was not sorted correctly. This has been fixed and we have updated the `predict_atac.ipynb` and `prepare_pbmc.ipynb`. Sorry for the inconvenience. The `finetune_pbmc.ipynb` and `pretrain_pbmc.ipynb` is pending an update. We will notify here once we updated it. 
+- 2025-03-04: Added a new tutorial for doing inference using the preprocessed astrocyte data.
+- There was a bug in data preparation pipeline for PBMC10x data, leading to random performance in predcit ATAC performance. The reason is peak was expected to be sorted by `chr1,chr2,chr3` while the count matrix was not sorted correctly. This has been fixed and we have updated the `predict_atac.ipynb`, `prepare_pbmc.ipynb`, `finetune_pbmc.ipynb` and `pretrain_pbmc.ipynb`.
 - As as sanity check to prevent this kind of processing bug when you are dealing with your own data. I recommend you to run `predict_atac.ipynb` to train a motif->ATAC model from scratch. If the data has been properly processed and has decent (e.g. > 3M) depth, the performance should
   rapidly (<10 epochs) reach ~0.7 Pearson when trained on one cell type and leave out chr10,chr11.
 - `export_config` and `load_config_from_yaml` helper functions has been added to `get_model.config.config` for export and load back your customized config as yaml file.
@@ -42,7 +43,7 @@ Note that `Motif -> ATAC prediction` tutorial has been tested on a Macbook Pro M
 However, some ops used in the metric calculation (Pearson/Spearman/R^2) was not accelarated, making the speed a bit inferior. 
 
 ## Data
-- Preprocessed tutorial data is available at https://zenodo.org/records/14614947; 
+- Preprocessed tutorial data is available at [astrocyte](https://zenodo.org/records/14614947/files/astrocyte.zarr.tar?download=1) and [pbmc](https://zenodo.org/records/14915449/files/pbmc10k_multiome.zarr.tar?download=1); 
 - Pretrain data can be found in s3://2023-get-xf2217/get_demo/pretrain_human_bingren_shendure_apr2023/ (although it's in a deprecated format, which should be load with `get_model.dataset.zarr_dataset.RegionDataset` rather than the new `get_model.dataset.zarr_dataset.RegionMotifDataset`. The information they stored is the same. We just switched to `zarr` for future-proof.)
 - Inference results and checkpoints (used in the [demo](https://huggingface.co/spaces/get-foundation/getdemo) can be found in `s3://2023-get-xf2217/get_demo/`
 
