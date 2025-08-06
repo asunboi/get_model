@@ -15,7 +15,7 @@ from pyranges import PyRanges as pr
 # tabix
 # wget
 
-def download_motif(motif_url, index_url, motif_dir="data"):
+def download_motif(motif_url, index_url, motif_dir="data", assembly="hg38"):
     """
     Download motif data from a URL and its index.
 
@@ -24,12 +24,13 @@ def download_motif(motif_url, index_url, motif_dir="data"):
     Args:
         motif_url (str): URL to the motif file.
         index_url (str): URL to the index file.
+        motif_dir (str): Directory where the motif file will be saved.
+        assembly (str): Genome assembly.
     """
+    motif_filename = f"{assembly}.archetype_motifs.v1.0.bed.gz"
+    subprocess.run(["wget", "-O", os.path.join(motif_dir, motif_filename), motif_url], check=True)
     subprocess.run(
-        ["wget", "-O", os.path.join(motif_dir, "hg38.archetype_motifs.v1.0.bed.gz"), motif_url], check=True
-    )
-    subprocess.run(
-        ["wget", "-O", os.path.join(motif_dir, "hg38.archetype_motifs.v1.0.bed.gz.tbi"), index_url], check=True
+        ["wget", "-O", os.path.join(motif_dir, f"{motif_filename}.tbi"), index_url], check=True
     )
 
 
@@ -95,7 +96,7 @@ def query_motif(peak_bed, motif_bed):
     return "query_motif.bed"
 
 
-def get_motif(peak_file, motif_file):
+def get_motif(peak_file, motif_file, assembly="hg38"):
     """
     Get motif data from a peak file and a motif file.
 
@@ -109,13 +110,14 @@ def get_motif(peak_file, motif_file):
     Args:
         peak_file (str): Path to the peak file.
         motif_file (str): Path to the motif file.
+        assembly (str): The genome assembly.
 
     Returns:
         str: Path to the output bed file containing the peak motif data.
     """
 
     cmd = f"""
-    ASSEMBLY="hg38"
+    ASSEMBLY="{assembly}"
     MEM="12G"
     CPU="2"
     ATAC_PEAK_FILE="{peak_file}"
@@ -146,7 +148,7 @@ def get_motif(peak_file, motif_file):
     return "get_motif.bed"
 
 
-def create_peak_motif(peak_motif_bed, output_zarr, peak_bed):
+def create_peak_motif(peak_motif_bed, output_zarr, peak_bed, assembly="hg38"):
     """
     Create a peak motif zarr file from a peak motif bed file.
 
@@ -159,6 +161,8 @@ def create_peak_motif(peak_motif_bed, output_zarr, peak_bed):
     Args:
         peak_motif_bed (str): Path to the peak motif bed file.
         output_zarr (str): Path to the output zarr file.
+        peak_bed (str): Path to the peak bed file.
+        assembly (str): The genome assembly.
     """
     # Read the peak motif bed file
     peak_motif = pd.read_csv(
@@ -182,6 +186,7 @@ def create_peak_motif(peak_motif_bed, output_zarr, peak_bed):
         lambda x: f'{x["Chromosome"]}:{x["Start"]}-{x["End"]}', axis=1
     )
     peak_motif_pivoted = peak_motif_pivoted.drop(columns=["Chromosome", "Start", "End"])
+
     # Read the original peak bed file
     original_peaks = pd.read_csv(
         peak_bed, sep="\t", header=None, names=["Chromosome", "Start", "End", "Score"]
@@ -194,20 +199,16 @@ def create_peak_motif(peak_motif_bed, output_zarr, peak_bed):
 
     # Merge the pivoted data with the original peaks
     merged_data = pd.merge(original_peaks, peak_motif_pivoted, on="Name", how="left")
-
-    # Fill NaN values with 0 for motif columns
-    motif_columns = [
-        col
-        for col in merged_data.columns
-        if col not in ["Chromosome", "Start", "End", "Score", "Name"]
-    ]
-    merged_data[motif_columns] = merged_data[motif_columns].fillna(0)
-    # Prepare data for zarr storage
     name_values = list(merged_data["Name"].values)
-    motif_values = motif_columns
+
+    human_motif_cluster = np.loadtxt('./human_motif_cluster_id', dtype=str)
+    for motif in human_motif_cluster:
+        if motif not in merged_data.columns:
+            merged_data[motif] = np.nan
+    merged_data = merged_data[human_motif_cluster].copy().fillna(0)
 
     # Create sparse matrix
-    motif_data_matrix = merged_data[motif_columns].values
+    motif_data_matrix = merged_data[human_motif_cluster].values
     # Open zarr store and save data
     from numcodecs import Blosc
 
@@ -221,7 +222,7 @@ def create_peak_motif(peak_motif_bed, output_zarr, peak_bed):
         shape=motif_data_matrix.shape,
     )
     z.create_dataset("peak_names", data=name_values)
-    z.create_dataset("motif_names", data=motif_values)
+    z.create_dataset("motif_names", data=human_motif_cluster)
 
     print(f"Peak motif data saved to {output_zarr}")
 
@@ -278,7 +279,7 @@ def add_atpm(zarr_file, bed_file, celltype):
 
 
 def add_exp(
-    zarr_file, rna_file, atac_file, celltype, assembly="hg38", version=40, extend_bp=300, id_or_name="gene_id",
+    zarr_file, rna_file, atac_file, celltype, assembly="hg38", version='40', extend_bp=300, id_or_name="gene_id",
 ):
     """
     Add expression and TSS data for a specific cell type to the zarr file.
@@ -289,7 +290,7 @@ def add_exp(
         atac_file (str): Path to the ATAC file.
         celltype (str): Name of the cell type for which the expression data is being added.
         assembly (str): Genome assembly (e.g., 'hg38', 'mm10').
-        version (int): Version of the genome assembly.
+        version (str): Version of the genome assembly, for human, use '40' or '44', for mouse, use 'M36'.
         extend_bp (int): Number of base pairs to extend the promoter region.
         id_or_name (str): Whether to use 'gene_id' or 'gene_name' for the gene identifier.
     """

@@ -70,12 +70,15 @@ def setup_trainer(cfg):
         )
     )
     # Create both regular and finetuned checkpoints
+    save_top_k = -1 if cfg.training.save_every_n_epochs is not None else 1
+    filename = "checkpoint-{epoch:03d}-{step:06d}-{val_loss:.4f}" if cfg.training.save_every_n_epochs is not None else "best"
     regular_checkpoint = ModelCheckpoint(
         monitor="val_loss",
         mode="min",
-        save_top_k=1,
+        save_top_k=save_top_k,
         save_last=True,
-        filename="best",
+        every_n_epochs=cfg.training.save_every_n_epochs,
+        filename=filename,
         dirpath=os.path.join(
             cfg.machine.output_dir,
             cfg.run.project_name,
@@ -147,7 +150,7 @@ def load_checkpoint(checkpoint_path, model_key=None):
             checkpoint_path, map_location="cpu", check_hash=True
         )
     else:
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     print("Load ckpt from %s" % checkpoint_path)
 
     if model_key is not None:
@@ -232,6 +235,8 @@ def recursive_detach(tensors):
     elif isinstance(tensors, torch.Tensor):
         if tensors.is_cuda or tensors.device.type == "mps":
             return tensors.detach().cpu()
+        else:
+            return tensors.detach()
     else:
         return tensors
 
@@ -294,10 +299,14 @@ def recursive_save_to_zarr(zarr_group, dict_data, **kwargs):
                     and isinstance(zarr_group[k], zarr.core.Array)
                     and zarr_group[k].shape[1:] != v.shape[1:]
                 ):
-                    new_shape = [v.shape[0]] + list(zarr_group[k].shape[1:])
-                    new_data = np.zeros(new_shape, dtype=v.dtype)
-                    new_data[:, : v.shape[1]] = v
-                    zarr_group[k].append(new_data)
+                    # Handle 1D arrays differently
+                    if v.ndim == 1:
+                        zarr_group[k].append(v)
+                    else:
+                        new_shape = [v.shape[0]] + list(zarr_group[k].shape[1:])
+                        new_data = np.zeros(new_shape, dtype=v.dtype)
+                        new_data[:, : v.shape[1]] = v
+                        zarr_group[k].append(new_data)
                 else:
                     zarr_group[k].append(v)
 
